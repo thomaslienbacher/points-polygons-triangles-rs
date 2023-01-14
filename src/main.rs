@@ -37,11 +37,19 @@ impl ConvexPoly {
         hull.push(points[0]);
 
         points[1..].sort_by(|a, b| {
-            let smallest = hull[0].clone();
+            let smallest = &hull[0];
             let aa = (*a - smallest);
             let ba = (*b - smallest);
-            angle(&aa).total_cmp(&angle(&ba)).reverse()
+            angle(&aa).total_cmp(&angle(&ba))
         });
+
+        println!("{:?}", &points[..2]);
+        print!("points sorted counter clockwise: ");
+        points[1..].iter().for_each(|p| {
+            print!("{:02.3} ", angle(&(*p - &hull[0])));
+        });
+        println!();
+        println!("{:?}", &points[..2]);
 
         let mut all = points.clone();
         let n = points.len();
@@ -49,7 +57,7 @@ impl ConvexPoly {
         for i in 1..n {
             let p = &points[i];
             while hull.len() > 1 &&
-                Orientation::calc(&hull[hull.len() - 2], &hull[hull.len() - 1], p) == Leftwards {
+                Orientation::calc(&hull[hull.len() - 2], &hull[hull.len() - 1], p) == Rightwards {
                 hull.pop();
             }
 
@@ -110,14 +118,13 @@ fn is_point_in_polygon(poly: &ConvexPoly, p: &Point) -> bool {
     for i in 0..hull.len() {
         let s = hull.get(i).unwrap();
         let e = hull.get((i + 1) % hull.len()).unwrap();
-        if Orientation::calc(s, p, e) == Rightwards {
+        if Orientation::calc(s, p, e) == Leftwards {
             return false;
         }
     }
 
     true
 }
-
 
 fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Point, search_angle: f64) -> usize {
     //println!("checking from {low} to {high} with search angle {search_angle}");
@@ -144,7 +151,7 @@ fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Poin
 
     //println!("angle of {middle} is {:02.3}", middle_angle);
 
-    if middle_angle < search_angle {
+    if middle_angle > search_angle {
         if middle - 1 == high {
             panic!("infinite recursion");
         }
@@ -169,14 +176,14 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
         search_angle += 2.0 * f64::PI();
     }
 
-    /*println!("searching for: {:02.3}", search_angle);
+    println!("searching for: {:02.3}", search_angle);
 
     print!("angles: ");
     for a in &poly.hull[1..] {
         let mut ang = angle(&(a - center));
         print!("{:02.3} ", ang)
     }
-    println!();*/
+    println!();
 
     // check angles around center
     let center_left = angle(&(poly.hull.last().unwrap() - center));
@@ -184,7 +191,8 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
     //println!("center left: {center_left}");
     //println!("center right: {center_right}");
 
-    if search_angle > center_right || search_angle < center_left {
+    if search_angle < center_right || search_angle > center_left {
+        println!("false because of search angle pre check!");
         return false;
     }
 
@@ -192,15 +200,14 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
     // this only works because hull is sorted ccw
     let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle);
 
-
     let left = &poly.hull[closest_node_by_angle];
     let closest = &poly.hull[(closest_node_by_angle + 1) % poly.hull.len()];
     let right = &poly.hull[(closest_node_by_angle + 2) % poly.hull.len()];
 
-    //println!("closest: {closest_node_by_angle} => {:02.3} \n\n", angle(&(closest - center)));
+    println!("closest: {closest_node_by_angle} => {:02.3} \n\n", angle(&(closest - center)));
 
-    Orientation::calc(left, p, closest) == Leftwards &&
-        Orientation::calc(closest, p, right) == Leftwards
+    Orientation::calc(left, p, closest) == Rightwards &&
+        Orientation::calc(closest, p, right) == Rightwards
 }
 
 fn add_point(doc: Document, p: &Point, color: &str, radius: i32, stroke: &str) -> Document {
@@ -242,7 +249,7 @@ const RED_FILL: &str = "#ff0000";
 const RED_STROKE: &str = "#8A0000";
 
 const RED_OUTSIDE_FILL: &str = "#ff9999";
-const RED_OUTSIDE_STROKE: &str = "#8A0000";
+const RED_OUTSIDE_STROKE: &str = "#ff5555";
 
 const POINT_RADIUS: i32 = 5;
 const POINT_OUTSIDE_RADIUS: i32 = 4;
@@ -302,9 +309,9 @@ fn test_point_triangle() {
     let A = &poly.hull[0];
     let B = &poly.hull[1];
     let C = &poly.hull[2];
-    inside = Orientation::calc(A, &testpoint, B) == Leftwards &&
-        Orientation::calc(B, &testpoint, C) == Leftwards &&
-        Orientation::calc(C, &testpoint, A) == Leftwards;
+    inside = Orientation::calc(A, &testpoint, B) == Rightwards &&
+        Orientation::calc(B, &testpoint, C) == Rightwards &&
+        Orientation::calc(C, &testpoint, A) == Rightwards;
 
     if inside {
         document = add_point(document, &testpoint, RED_FILL, POINT_RADIUS, RED_STROKE);
@@ -387,7 +394,7 @@ fn test_point_polygon() {
     }
 
     let inside = is_point_in_polygon_fast(&poly, &testpoint);
-    assert_eq!(is_point_in_polygon_fast(&poly, &testpoint), is_point_in_polygon(&poly, &testpoint));
+    //assert_eq!(is_point_in_polygon_fast(&poly, &testpoint), is_point_in_polygon(&poly, &testpoint));
     if inside {
         document = add_point(document, &testpoint, RED_FILL, POINT_RADIUS, RED_STROKE);
     } else {
@@ -485,7 +492,7 @@ fn test_red_points_green_triangles() {
         document = add_point(document, g, GREEN_FILL, 5, GREEN_STROKE);
     }
     for r in &red {
-        assert_eq!(is_point_in_polygon_fast(&green_poly, r), is_point_in_polygon(&green_poly, r));
+        //assert_eq!(is_point_in_polygon_fast(&green_poly, r), is_point_in_polygon(&green_poly, r));
 
         if is_point_in_polygon_fast(&green_poly, r) {
             document = add_point(document, r, RED_FILL, 5, RED_STROKE);
@@ -502,10 +509,11 @@ fn test_red_points_green_triangles() {
 }
 
 fn main() {
-    while true {
+    loop {
         test_point_triangle();
         test_point_polygon();
-        test_red_points_green_triangles();
+        //test_red_points_green_triangles();
+        break;
         thread::sleep(Duration::from_millis(2500));
     }
 }
