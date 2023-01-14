@@ -7,10 +7,9 @@ use std::time::Duration;
 use cgmath::{Matrix3, vec2, Vector2};
 use cgmath::num_traits::FloatConst;
 use cgmath::prelude::*;
-use rand_distr::Normal;
-
 use rand::{Rng, thread_rng};
 use rand::distributions::{Standard, Uniform};
+use rand_distr::Normal;
 use svg::{Document, node};
 use svg::node::element::{Circle, Group, Path, Rectangle, Text};
 use svg::node::element::path::Data;
@@ -64,10 +63,18 @@ impl ConvexPoly {
             hull.push(p.clone());
         }
 
+        // shift points to so the starting point isn't the lowest point on the plane
+        let mut shifted_hull = vec![];
+
+        for i in 0..hull.len() {
+            let shifted = (i + 3) % hull.len();
+            shifted_hull.push(hull[shifted]);
+        }
+
         // TODO: find min max during hull construction or sorting
         ConvexPoly {
             all,
-            hull,
+            hull: shifted_hull,
             x_min: points.iter().map(|p| p.x).reduce(|a, b| a.min(b)).unwrap(),
             x_max: points.iter().map(|p| p.x).reduce(|a, b| a.max(b)).unwrap(),
             y_min: points.iter().map(|p| p.y).reduce(|a, b| a.min(b)).unwrap(),
@@ -77,7 +84,19 @@ impl ConvexPoly {
 }
 
 fn angle(p: &Point) -> f64 {
-    f64::atan2(p.y, p.x)
+    let a = f64::atan2(p.y, p.x);
+    if a < 0.0 {
+        return a + 2.0 * f64::PI();
+    }
+    a
+}
+
+fn wrapped_angle_sub(angle: f64, sub: f64) -> f64 {
+    let s = angle - sub;
+    if s < 0.0 {
+        return s + 2.0 * f64::PI();
+    }
+    s
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
@@ -126,7 +145,7 @@ fn is_point_in_polygon(poly: &ConvexPoly, p: &Point) -> bool {
     true
 }
 
-fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Point, search_angle: f64) -> usize {
+fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Point, search_angle: f64, offset_angle: f64) -> usize {
     //println!("checking from {low} to {high} with search angle {search_angle}");
     assert!(low <= high);
     if low == high {
@@ -134,8 +153,8 @@ fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Poin
     }
 
     if high - low == 1 {
-        let lowdiff = (angle(&(points[low] - center)) - search_angle).abs();
-        let highdiff = (angle(&(points[high] - center)) - search_angle).abs();
+        let lowdiff = (wrapped_angle_sub(angle(&(points[low] - center)), offset_angle) - search_angle).abs();
+        let highdiff = (wrapped_angle_sub(angle(&(points[high] - center)), offset_angle) - search_angle).abs();
         //println!("low diff: {lowdiff}");
         //println!("high diff: {highdiff}");
 
@@ -147,7 +166,7 @@ fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Poin
     }
 
     let middle = ((high + low) / 2);
-    let mut middle_angle = angle(&(points[middle] - center));
+    let mut middle_angle = wrapped_angle_sub(angle(&(points[middle] - center)), offset_angle);
 
     //println!("angle of {middle} is {:02.3}", middle_angle);
 
@@ -155,56 +174,47 @@ fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Poin
         if middle - 1 == high {
             panic!("infinite recursion");
         }
-        return binary_search_angles(points, low, middle, center, search_angle);
+        return binary_search_angles(points, low, middle, center, search_angle, offset_angle);
     } else {
         if middle + 1 == low {
             panic!("infinite recursion");
         }
-        return binary_search_angles(points, middle, high, center, search_angle);
+        return binary_search_angles(points, middle, high, center, search_angle, offset_angle);
     }
 }
 
 fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
-    //if p.x < poly.x_min || p.x > poly.x_max || p.y < poly.y_min || p.y > poly.y_max {
-    //    return false;
-    //}
+    let center = (poly.hull[0] + poly.hull[1] + poly.hull[2]) / 3.0;
+    let offset_angle = angle(&(poly.hull[0] - center));
+    let mut search_angle = wrapped_angle_sub(angle(&(p - center)), offset_angle);
 
-    let center = poly.hull[0];
-    let mut search_angle = angle(&(p - center));
-    if search_angle < 0.0 {
-        //println!("search angle negative");
-        search_angle += 2.0 * f64::PI();
-    }
-
-    /*println!("searching for: {:02.3}", search_angle);
+    /*println!("offset angle: {:02.3}", offset_angle);
+    println!("searching for w: {:02.3}", search_angle);
 
     print!("angles: ");
     for a in &poly.hull[1..] {
         let mut ang = angle(&(a - center));
         print!("{:02.3} ", ang)
     }
-    println!();*/
+    println!();
 
-    // check angles around center
-    let center_left = angle(&(poly.hull.last().unwrap() - center));
-    let center_right = angle(&(poly.hull[1] - center));
-    //println!("center left: {center_left}");
-    //println!("center right: {center_right}");
-
-    if search_angle < center_right || search_angle > center_left {
-        //println!("false because of search angle pre check!");
-        return false;
+    print!("angles wrapped: ");
+    for a in &poly.hull[1..] {
+        let mut ang = wrapped_angle_sub(angle(&(a - center)), offset_angle);
+        print!("{:02.3} ", ang)
     }
+    println!();*/
 
     // binary search the two nodes whose angles are the nearest to `angle`
     // this only works because hull is sorted ccw
-    let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle);
+    //dbg!(poly.hull.len() - 2, &center, search_angle, offset_angle);
+    let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle, offset_angle);
 
     let left = &poly.hull[closest_node_by_angle];
     let closest = &poly.hull[(closest_node_by_angle + 1) % poly.hull.len()];
     let right = &poly.hull[(closest_node_by_angle + 2) % poly.hull.len()];
 
-    //println!("closest: {closest_node_by_angle} => {:02.3} \n\n", angle(&(closest - center)));
+    //println!("closest: {} => {:02.3} \n\n", closest_node_by_angle + 1, wrapped_angle_sub(angle(&(closest - center)), offset_angle));
 
     Orientation::calc(left, p, closest) == Rightwards &&
         Orientation::calc(closest, p, right) == Rightwards
@@ -341,7 +351,7 @@ fn test_point_polygon() {
     let mut points = vec![];
 
     let dist = Uniform::new(SPACING, WIDTH - SPACING);
-    for _ in 0..40 {
+    for _ in 0..10 {
         let p = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
         points.push(p);
     }
@@ -368,11 +378,13 @@ fn test_point_polygon() {
     document = document.add(path);
 
     let mut testpoint = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
+    //testpoint = Point::new(282.45705815348674, 352.8921476988387);
     println!("testpoint: {:?}", testpoint);
 
     // triangulation lines
     let mut data = Data::new();
-    let start = &poly.hull[0];
+    let center = (poly.hull[0] + poly.hull[1] + poly.hull[2]) / 3.0;
+    let start = center;
     for p in &poly.hull {
         data = data.move_to((start.x, HEIGHT - start.y));
         data = data.line_to((p.x, HEIGHT - p.y));
@@ -395,20 +407,25 @@ fn test_point_polygon() {
 
     let inside = is_point_in_polygon_fast(&poly, &testpoint);
     assert_eq!(is_point_in_polygon_fast(&poly, &testpoint), is_point_in_polygon(&poly, &testpoint));
+
+    if is_point_in_polygon_fast(&poly, &testpoint) != is_point_in_polygon(&poly, &testpoint) {
+        println!("\n##### THIS IS WRONG!! #####\n");
+    }
+
     if inside {
         document = add_point(document, &testpoint, RED_FILL, POINT_RADIUS, RED_STROKE);
     } else {
         document = add_point(document, &testpoint, RED_OUTSIDE_FILL, POINT_OUTSIDE_RADIUS, RED_OUTSIDE_STROKE);
     }
 
-    let center = poly.hull[0];
-    let mut search_angle = angle(&(testpoint - center));
-    if search_angle < 0.0 {
-        search_angle += 2.0 * f64::PI();
-    }
-    let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle);
-    let closest = &poly.hull[closest_node_by_angle + 1];
 
+    let root = poly.hull[0];
+    let offset_angle = angle(&(root - center));
+    let search_angle = wrapped_angle_sub(angle(&(testpoint - center)), offset_angle);
+    //dbg!(poly.hull.len() - 2, &center, search_angle, offset_angle);
+    let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle, offset_angle);
+    let closest = &poly.hull[closest_node_by_angle + 1];
+    //println!("draw closest: {}", closest_node_by_angle + 1);
     let c = Circle::new()
         .set("cx", closest.x)
         .set("cy", HEIGHT - closest.y)
@@ -418,6 +435,8 @@ fn test_point_polygon() {
         .set("stroke-dasharray", "2 1")
         .set("r", 11);
     document = document.add(c);
+
+    document = add_point(document, &center, "#00ffff", POINT_RADIUS, "#004444");
 
     for i in 0..poly.hull.len() {
         document = add_text(document, &poly.hull[i], format!("{i}"));
@@ -445,12 +464,14 @@ fn test_red_points_green_triangles() {
     //let dist = Uniform::new(SPACING, WIDTH - SPACING);
     let dist = Normal::new(WIDTH / 2.0, WIDTH / 7.0).unwrap();
     let dist2 = Normal::new(WIDTH / 2.0, WIDTH / 6.0).unwrap();
-    for _ in 0..20 {
+    for _ in 0..37 {
         let g = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
         let r = Point::new(thread_rng().sample(dist2), thread_rng().sample(dist2));
         green.push(g);
         red.push(r);
     }
+
+    println!("green: {:#?}", &green);
 
     let green_poly = ConvexPoly::new(green.clone());
 
@@ -472,7 +493,8 @@ fn test_red_points_green_triangles() {
 
     // triangulation lines
     let mut data = Data::new();
-    let start = &green_poly.hull[0];
+    let center = (green_poly.hull[0] + green_poly.hull[1] + green_poly.hull[2]) / 3.0;
+    let start = center;
     for p in &green_poly.hull {
         data = data.move_to((start.x, HEIGHT - start.y));
         data = data.line_to((p.x, HEIGHT - p.y));
@@ -491,6 +513,7 @@ fn test_red_points_green_triangles() {
         document = add_point(document, g, GREEN_FILL, 5, GREEN_STROKE);
     }
     for r in &red {
+        println!("red: {:?}", r);
         assert_eq!(is_point_in_polygon_fast(&green_poly, r), is_point_in_polygon(&green_poly, r));
 
         if is_point_in_polygon_fast(&green_poly, r) {
@@ -499,6 +522,8 @@ fn test_red_points_green_triangles() {
             document = add_point(document, r, RED_OUTSIDE_FILL, 4, RED_OUTSIDE_STROKE);
         }
     }
+
+    document = add_point(document, &center, "#00ffff", POINT_RADIUS, "#004444");
 
     for i in 0..green_poly.hull.len() {
         document = add_text(document, &green_poly.hull[i], format!("{i}"));
@@ -509,10 +534,10 @@ fn test_red_points_green_triangles() {
 
 fn main() {
     loop {
-        test_point_triangle();
+        //test_point_triangle();
         test_point_polygon();
         test_red_points_green_triangles();
-        break;
+        //break;
         thread::sleep(Duration::from_millis(2500));
     }
 }
