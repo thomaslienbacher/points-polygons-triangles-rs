@@ -43,13 +43,13 @@ impl ConvexPoly {
             angle(&aa).total_cmp(&angle(&ba))
         });
 
-        println!("{:?}", &points[..2]);
+        /*println!("{:?}", &points[..2]);
         print!("points sorted counter clockwise: ");
         points[1..].iter().for_each(|p| {
             print!("{:02.3} ", angle(&(*p - &hull[0])));
         });
         println!();
-        println!("{:?}", &points[..2]);
+        println!("{:?}", &points[..2]);*/
 
         let mut all = points.clone();
         let n = points.len();
@@ -176,14 +176,14 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
         search_angle += 2.0 * f64::PI();
     }
 
-    println!("searching for: {:02.3}", search_angle);
+    /*println!("searching for: {:02.3}", search_angle);
 
     print!("angles: ");
     for a in &poly.hull[1..] {
         let mut ang = angle(&(a - center));
         print!("{:02.3} ", ang)
     }
-    println!();
+    println!();*/
 
     // check angles around center
     let center_left = angle(&(poly.hull.last().unwrap() - center));
@@ -192,7 +192,7 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
     //println!("center right: {center_right}");
 
     if search_angle < center_right || search_angle > center_left {
-        println!("false because of search angle pre check!");
+        //println!("false because of search angle pre check!");
         return false;
     }
 
@@ -204,7 +204,7 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
     let closest = &poly.hull[(closest_node_by_angle + 1) % poly.hull.len()];
     let right = &poly.hull[(closest_node_by_angle + 2) % poly.hull.len()];
 
-    println!("closest: {closest_node_by_angle} => {:02.3} \n\n", angle(&(closest - center)));
+    //println!("closest: {closest_node_by_angle} => {:02.3} \n\n", angle(&(closest - center)));
 
     Orientation::calc(left, p, closest) == Rightwards &&
         Orientation::calc(closest, p, right) == Rightwards
@@ -213,7 +213,7 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
 fn add_point(doc: Document, p: &Point, color: &str, radius: i32, stroke: &str) -> Document {
     let c = Circle::new()
         .set("cx", p.x)
-        .set("cy", p.y)
+        .set("cy", HEIGHT - p.y)
         .set("fill", color)
         .set("stroke", stroke)
         .set("stroke-width", 2)
@@ -229,7 +229,7 @@ fn grayscale_hex(p: f64) -> String {
 fn add_text(doc: Document, p: &Point, text: String) -> Document {
     let c = Text::new()
         .set("x", p.x + 5.0)
-        .set("y", p.y - 5.0)
+        .set("y", HEIGHT - p.y - 5.0)
         .set("fill", "white")
         .set("stroke", "black")
         .set("stroke-width", 0.8)
@@ -278,9 +278,9 @@ fn test_point_triangle() {
 
     let mut data = Data::new();
     let start = &poly.hull[0];
-    data = data.move_to((start.x, start.y));
+    data = data.move_to((start.x, HEIGHT - start.y));
     for p in &poly.hull {
-        data = data.line_to((p.x, p.y));
+        data = data.line_to((p.x, HEIGHT - p.y));
     }
 
     data = data.close();
@@ -352,9 +352,9 @@ fn test_point_polygon() {
 
     let mut data = Data::new();
     let start = &poly.hull[0];
-    data = data.move_to((start.x, start.y));
+    data = data.move_to((start.x, HEIGHT - start.y));
     for p in &poly.hull {
-        data = data.line_to((p.x, p.y));
+        data = data.line_to((p.x, HEIGHT - p.y));
     }
 
     data = data.close();
@@ -374,11 +374,11 @@ fn test_point_polygon() {
     let mut data = Data::new();
     let start = &poly.hull[0];
     for p in &poly.hull {
-        data = data.move_to((start.x, start.y));
-        data = data.line_to((p.x, p.y));
+        data = data.move_to((start.x, HEIGHT - start.y));
+        data = data.line_to((p.x, HEIGHT - p.y));
     }
-    data = data.move_to((start.x, start.y));
-    data = data.line_to((testpoint.x, testpoint.y));
+    data = data.move_to((start.x, HEIGHT - start.y));
+    data = data.line_to((testpoint.x, HEIGHT - testpoint.y));
     data = data.close();
 
     let path = Path::new()
@@ -394,7 +394,7 @@ fn test_point_polygon() {
     }
 
     let inside = is_point_in_polygon_fast(&poly, &testpoint);
-    //assert_eq!(is_point_in_polygon_fast(&poly, &testpoint), is_point_in_polygon(&poly, &testpoint));
+    assert_eq!(is_point_in_polygon_fast(&poly, &testpoint), is_point_in_polygon(&poly, &testpoint));
     if inside {
         document = add_point(document, &testpoint, RED_FILL, POINT_RADIUS, RED_STROKE);
     } else {
@@ -404,7 +404,6 @@ fn test_point_polygon() {
     let center = poly.hull[0];
     let mut search_angle = angle(&(testpoint - center));
     if search_angle < 0.0 {
-        println!("search angle negative");
         search_angle += 2.0 * f64::PI();
     }
     let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle);
@@ -412,7 +411,7 @@ fn test_point_polygon() {
 
     let c = Circle::new()
         .set("cx", closest.x)
-        .set("cy", closest.y)
+        .set("cy", HEIGHT - closest.y)
         .set("fill", "none")
         .set("stroke", "#00ffff")
         .set("stroke-width", 1)
@@ -446,7 +445,7 @@ fn test_red_points_green_triangles() {
     //let dist = Uniform::new(SPACING, WIDTH - SPACING);
     let dist = Normal::new(WIDTH / 2.0, WIDTH / 7.0).unwrap();
     let dist2 = Normal::new(WIDTH / 2.0, WIDTH / 6.0).unwrap();
-    for _ in 0..25 {
+    for _ in 0..20 {
         let g = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
         let r = Point::new(thread_rng().sample(dist2), thread_rng().sample(dist2));
         green.push(g);
@@ -457,9 +456,9 @@ fn test_red_points_green_triangles() {
 
     let mut data = Data::new();
     let start = &green_poly.hull[0];
-    data = data.move_to((start.x, start.y));
+    data = data.move_to((start.x, HEIGHT - start.y));
     for p in &green_poly.hull {
-        data = data.line_to((p.x, p.y));
+        data = data.line_to((p.x, HEIGHT - p.y));
     }
     data = data.close();
 
@@ -475,8 +474,8 @@ fn test_red_points_green_triangles() {
     let mut data = Data::new();
     let start = &green_poly.hull[0];
     for p in &green_poly.hull {
-        data = data.move_to((start.x, start.y));
-        data = data.line_to((p.x, p.y));
+        data = data.move_to((start.x, HEIGHT - start.y));
+        data = data.line_to((p.x, HEIGHT - p.y));
     }
     data = data.close();
 
@@ -492,7 +491,7 @@ fn test_red_points_green_triangles() {
         document = add_point(document, g, GREEN_FILL, 5, GREEN_STROKE);
     }
     for r in &red {
-        //assert_eq!(is_point_in_polygon_fast(&green_poly, r), is_point_in_polygon(&green_poly, r));
+        assert_eq!(is_point_in_polygon_fast(&green_poly, r), is_point_in_polygon(&green_poly, r));
 
         if is_point_in_polygon_fast(&green_poly, r) {
             document = add_point(document, r, RED_FILL, 5, RED_STROKE);
@@ -512,7 +511,7 @@ fn main() {
     loop {
         test_point_triangle();
         test_point_polygon();
-        //test_red_points_green_triangles();
+        test_red_points_green_triangles();
         break;
         thread::sleep(Duration::from_millis(2500));
     }
