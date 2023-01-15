@@ -67,7 +67,7 @@ impl ConvexPoly {
         let mut shifted_hull = vec![];
 
         for i in 0..hull.len() {
-            let shifted = (i + 3) % hull.len();
+            let shifted = (i + 1) % hull.len();
             shifted_hull.push(hull[shifted]);
         }
 
@@ -148,9 +148,6 @@ fn is_point_in_polygon(poly: &ConvexPoly, p: &Point) -> bool {
 fn binary_search_angles(points: &[Point], low: usize, high: usize, center: &Point, search_angle: f64, offset_angle: f64) -> usize {
     //println!("checking from {low} to {high} with search angle {search_angle}");
     assert!(low <= high);
-    if low == high {
-        return low;
-    }
 
     if high - low == 1 {
         let lowdiff = (wrapped_angle_sub(angle(&(points[low] - center)), offset_angle) - search_angle).abs();
@@ -297,6 +294,11 @@ fn test_point_triangle() {
         points.push(p);
     }
 
+    points[0] = Point::new(WIDTH / 2.0, SPACING + 10.0);
+    points[1] = Point::new(400.0, 400.0);
+    points[2] = Point::new(50.0, 250.0);
+
+
     let poly = ConvexPoly::new(points.clone());
 
     let mut data = Data::new();
@@ -332,6 +334,10 @@ fn test_point_triangle() {
     let A = &poly.hull[0];
     let B = &poly.hull[1];
     let C = &poly.hull[2];
+    document = add_text(document, &A, "A".into());
+    document = add_text(document, &B, "B".into());
+    document = add_text(document, &C, "C".into());
+    document = add_text(document, &testpoint, "p".into());
     inside = Orientation::calc(A, &testpoint, B) == Rightwards &&
         Orientation::calc(B, &testpoint, C) == Rightwards &&
         Orientation::calc(C, &testpoint, A) == Rightwards;
@@ -364,29 +370,10 @@ fn test_point_polygon() {
     let mut points = vec![];
 
     let dist = Uniform::new(SPACING, WIDTH - SPACING);
-    for _ in 0..5 {
+    for _ in 0..10 {
         let p = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
         points.push(p);
     }
-
-    points = vec![
-        Point::new(
-            385.89501817174164,
-            199.4861474125416,
-        ), Point::new(
-            417.95009309326826,
-            204.85174670597942,
-        ), Point::new(
-            278.0998018834387,
-            330.47203849889024,
-        ), Point::new(
-            428.6678950939702,
-            92.76676368888545,
-        ), Point::new(
-            371.08684739368454,
-            152.38983816276289,
-        ),
-    ];
 
     println!("{:#?}", points);
 
@@ -410,7 +397,6 @@ fn test_point_polygon() {
     document = document.add(path);
 
     let mut testpoint = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
-    testpoint = Point::new(87.5412609580097, 217.13284641743672);
     println!("testpoint: {:?}", testpoint);
 
     // triangulation lines
@@ -571,10 +557,10 @@ fn test_red_points_green_triangles() {
 fn main() {
     let mut counter = 0u64;
     loop {
-        //test_point_triangle();
+        test_point_triangle();
         test_point_polygon();
         test_red_points_green_triangles();
-        //break;
+        break;
         //thread::sleep(Duration::from_millis(2500));
         counter += 1;
         println!("count: {counter}");
