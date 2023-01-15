@@ -192,29 +192,42 @@ fn is_point_in_polygon_fast(poly: &ConvexPoly, p: &Point) -> bool {
     println!("searching for w: {:02.3}", search_angle);
 
     print!("angles: ");
-    for a in &poly.hull[1..] {
+    for a in &poly.hull[..] {
         let mut ang = angle(&(a - center));
         print!("{:02.3} ", ang)
     }
     println!();
 
     print!("angles wrapped: ");
-    for a in &poly.hull[1..] {
+    for a in &poly.hull[..] {
         let mut ang = wrapped_angle_sub(angle(&(a - center)), offset_angle);
         print!("{:02.3} ", ang)
     }
     println!();*/
 
+    // should we use a negative or positive search angle => this is important as zero might be nearest point when search angle is almost 2 PI
+    let diff_zero = (search_angle - 2.0 * f64::PI()).abs();
+    let diff_last = (search_angle - wrapped_angle_sub(angle(&(poly.hull.last().unwrap() - center)), offset_angle)).abs();
+
+    //println!("diff zero: {:01.3}", diff_zero);
+    //println!("diff last: {:01.3}", diff_last);
+
+    if diff_zero < diff_last {
+        // yes negative would be better
+        //println!("negating search angle");
+        search_angle -= 2.0 * f64::PI();
+    }
+
     // binary search the two nodes whose angles are the nearest to `angle`
     // this only works because hull is sorted ccw
     //dbg!(poly.hull.len() - 2, &center, search_angle, offset_angle);
-    let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle, offset_angle);
+    let closest_node_by_angle = binary_search_angles(&poly.hull[..], 0, poly.hull.len() - 1, &center, search_angle, offset_angle);
 
-    let left = &poly.hull[closest_node_by_angle];
-    let closest = &poly.hull[(closest_node_by_angle + 1) % poly.hull.len()];
-    let right = &poly.hull[(closest_node_by_angle + 2) % poly.hull.len()];
+    let left = &poly.hull[(closest_node_by_angle + poly.hull.len() - 1) % poly.hull.len()];
+    let closest = &poly.hull[(closest_node_by_angle) % poly.hull.len()];
+    let right = &poly.hull[(closest_node_by_angle + 1) % poly.hull.len()];
 
-    //println!("closest: {} => {:02.3} \n\n", closest_node_by_angle + 1, wrapped_angle_sub(angle(&(closest - center)), offset_angle));
+    //println!("closest: {} => {:02.3}", closest_node_by_angle, wrapped_angle_sub(angle(&(closest - center)), offset_angle));
 
     Orientation::calc(left, p, closest) == Rightwards &&
         Orientation::calc(closest, p, right) == Rightwards
@@ -351,10 +364,29 @@ fn test_point_polygon() {
     let mut points = vec![];
 
     let dist = Uniform::new(SPACING, WIDTH - SPACING);
-    for _ in 0..10 {
+    for _ in 0..5 {
         let p = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
         points.push(p);
     }
+
+    points = vec![
+        Point::new(
+            385.89501817174164,
+            199.4861474125416,
+        ), Point::new(
+            417.95009309326826,
+            204.85174670597942,
+        ), Point::new(
+            278.0998018834387,
+            330.47203849889024,
+        ), Point::new(
+            428.6678950939702,
+            92.76676368888545,
+        ), Point::new(
+            371.08684739368454,
+            152.38983816276289,
+        ),
+    ];
 
     println!("{:#?}", points);
 
@@ -378,7 +410,7 @@ fn test_point_polygon() {
     document = document.add(path);
 
     let mut testpoint = Point::new(thread_rng().sample(dist), thread_rng().sample(dist));
-    //testpoint = Point::new(282.45705815348674, 352.8921476988387);
+    testpoint = Point::new(87.5412609580097, 217.13284641743672);
     println!("testpoint: {:?}", testpoint);
 
     // triangulation lines
@@ -421,11 +453,15 @@ fn test_point_polygon() {
 
     let root = poly.hull[0];
     let offset_angle = angle(&(root - center));
-    let search_angle = wrapped_angle_sub(angle(&(testpoint - center)), offset_angle);
-    //dbg!(poly.hull.len() - 2, &center, search_angle, offset_angle);
-    let closest_node_by_angle = binary_search_angles(&poly.hull[1..], 0, poly.hull.len() - 2, &center, search_angle, offset_angle);
-    let closest = &poly.hull[closest_node_by_angle + 1];
-    //println!("draw closest: {}", closest_node_by_angle + 1);
+    let mut search_angle = wrapped_angle_sub(angle(&(testpoint - center)), offset_angle);
+    let diff_zero = (search_angle - 2.0 * f64::PI()).abs();
+    let diff_last = (search_angle - wrapped_angle_sub(angle(&(poly.hull.last().unwrap() - center)), offset_angle)).abs();
+    if diff_zero < diff_last {
+        search_angle -= 2.0 * f64::PI();
+    }
+    let closest_node_by_angle = binary_search_angles(&poly.hull[..], 0, poly.hull.len() - 1, &center, search_angle, offset_angle);
+    let closest = &poly.hull[closest_node_by_angle];
+    println!("draw closest: {}", closest_node_by_angle);
     let c = Circle::new()
         .set("cx", closest.x)
         .set("cy", HEIGHT - closest.y)
@@ -533,11 +569,14 @@ fn test_red_points_green_triangles() {
 }
 
 fn main() {
+    let mut counter = 0u64;
     loop {
         //test_point_triangle();
         test_point_polygon();
         test_red_points_green_triangles();
         //break;
-        thread::sleep(Duration::from_millis(2500));
+        //thread::sleep(Duration::from_millis(2500));
+        counter += 1;
+        println!("count: {counter}");
     }
 }
